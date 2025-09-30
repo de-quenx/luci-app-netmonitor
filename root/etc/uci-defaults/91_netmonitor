@@ -1,0 +1,22 @@
+#!/bin/sh
+
+# Setup vnstati permissions and reset-db
+chmod 755 /www/netmonitor/vnstati/vnstati.sh
+chmod 755 /usr/bin/reset-db
+
+# Fix jQuery version for netdata
+if [ -f /usr/share/netdata/web/lib/jquery-3.6.0.min.js ]; then
+    mv /usr/share/netdata/web/lib/jquery-3.6.0.min.js /usr/share/netdata/web/lib/jquery-2.2.4.min.js
+fi
+
+# Create vnstat directory
+mkdir -p /etc/vnstat
+
+# Restart services
+/etc/init.d/netdata restart >/dev/null 2>&1
+/etc/init.d/vnstat restart >/dev/null 2>&1
+
+# Run vnstati
+/www/netmonitor/vnstati/vnstati.sh >/dev/null 2>&1
+
+exit 0
