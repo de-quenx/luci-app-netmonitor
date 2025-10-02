@@ -2,7 +2,7 @@ let buttonsVisible = localStorage.getItem('buttonsVisible') !== 'false';
 let currentTheme = localStorage.getItem('theme') || 'light';
 let activeChart = 'summary';
 let showHijri = false;
-let chartLoadedOnce = {};
+let autoRefreshInterval = null;
 
 const themes = {
   light: 'Light',
@@ -21,9 +21,6 @@ document.addEventListener('DOMContentLoaded', function() {
   
   const ctrlButtons = document.getElementById('ctrlButtons');
   if (!buttonsVisible) ctrlButtons.classList.add('hidden');
-  
-  // Preload all chart images
-  preloadChartImages();
   
   document.getElementById('ctrlToggle').addEventListener('click', () => {
     buttonsVisible = !buttonsVisible;
@@ -58,28 +55,7 @@ document.addEventListener('DOMContentLoaded', function() {
   
   updateDateTime();
   setInterval(updateDateTime, 1000);
-  
-  // Auto refresh charts setiap 5 menit (bukan setiap kali modal dibuka)
-  setInterval(() => {
-    if (document.getElementById('statsModal').classList.contains('show')) {
-      refreshChart(activeChart, true);
-    }
-  }, 300000); // 5 menit
 });
-
-function preloadChartImages() {
-  const charts = ['summary', 'minutes', 'hourly', 'daily', 'monthly', 'yearly'];
-  charts.forEach(chart => {
-    const img = document.getElementById(chart);
-    if (img && !chartLoadedOnce[chart]) {
-      const tempImg = new Image();
-      tempImg.onload = () => {
-        chartLoadedOnce[chart] = true;
-      };
-      tempImg.src = img.src;
-    }
-  });
-}
 
 function toggleModal() {
   const modal = document.getElementById('statsModal');
@@ -87,7 +63,6 @@ function toggleModal() {
   const statsBtn = document.getElementById('statsBtn');
   const isVisible = modal.classList.contains('show');
   
-  // Close info modal if open
   closeInfoModal();
   
   if (isVisible) {
@@ -96,10 +71,8 @@ function toggleModal() {
     modal.classList.add('show');
     overlay.classList.add('active');
     statsBtn.classList.add('active');
-    // Hanya refresh jika belum pernah di-load
-    if (!chartLoadedOnce[activeChart]) {
-      refreshChart(activeChart, false);
-    }
+    loadChart(activeChart);
+    startAutoRefresh();
   }
 }
 
@@ -107,6 +80,7 @@ function closeModal() {
   document.getElementById('statsModal').classList.remove('show');
   document.getElementById('blurOverlay').classList.remove('active');
   document.getElementById('statsBtn').classList.remove('active');
+  stopAutoRefresh();
 }
 
 function toggleInfoModal() {
@@ -115,7 +89,6 @@ function toggleInfoModal() {
   const infoBtn = document.getElementById('infoBtn');
   const isVisible = modal.classList.contains('show');
   
-  // Close stats modal if open
   closeModal();
   
   if (isVisible) {
@@ -136,6 +109,23 @@ function closeInfoModal() {
 function closeAllModals() {
   closeModal();
   closeInfoModal();
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  
+  autoRefreshInterval = setInterval(() => {
+    if (document.getElementById('statsModal').classList.contains('show')) {
+      loadChart(activeChart);
+    }
+  }, 30000);
+}
+
+function stopAutoRefresh() {
+  if (autoRefreshInterval) {
+    clearInterval(autoRefreshInterval);
+    autoRefreshInterval = null;
+  }
 }
 
 function toHijri(date) {
@@ -213,40 +203,23 @@ function switchChart(chartType) {
   if (targetImg) {
     activeChart = chartType;
     targetImg.style.display = 'block';
-    // Hanya refresh jika belum pernah di-load
-    if (!chartLoadedOnce[chartType]) {
-      refreshChart(chartType, false);
-    }
+    loadChart(chartType);
   }
 }
 
-function refreshChart(chartType, forceRefresh = false) {
+function loadChart(chartType) {
   const container = document.getElementById('imageContainer');
   const img = document.getElementById(chartType);
   if (!img) return;
   
-  // Jangan refresh jika sudah di-load kecuali dipaksa
-  if (chartLoadedOnce[chartType] && !forceRefresh) {
-    return;
-  }
-  
   container.classList.add('loading');
+  
   const timestamp = Date.now();
-  const baseSrc = img.src.split('?')[0];
-  
-  // Gunakan cache buster hanya saat force refresh
-  const newSrc = forceRefresh ? `${baseSrc}?t=${timestamp}` : baseSrc;
-  
-  // Cek apakah src berbeda sebelum update
-  if (img.src === newSrc) {
-    container.classList.remove('loading');
-    chartLoadedOnce[chartType] = true;
-    return;
-  }
+  const baseSrc = img.getAttribute('src').split('?')[0];
+  const newSrc = `${baseSrc}?t=${timestamp}`;
   
   const handleLoad = () => {
     container.classList.remove('loading');
-    chartLoadedOnce[chartType] = true;
     img.removeEventListener('load', handleLoad);
     img.removeEventListener('error', handleError);
   };
@@ -291,8 +264,8 @@ document.addEventListener('keydown', function(e) {
   }
   if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.altKey) {
     if (document.getElementById('statsModal').classList.contains('show')) {
-      refreshChart(activeChart, true);
-      showToast('Chart refreshed', 'success');
+      loadChart(activeChart);
+      showToast('Chart updated', 'success');
     }
   }
 });
