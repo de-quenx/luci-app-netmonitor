@@ -2,6 +2,7 @@ let buttonsVisible = localStorage.getItem('buttonsVisible') !== 'false';
 let currentTheme = localStorage.getItem('theme') || 'light';
 let activeChart = 'summary';
 let showHijri = false;
+let chartLoadedOnce = {};
 
 const themes = {
   light: 'Light',
@@ -20,6 +21,9 @@ document.addEventListener('DOMContentLoaded', function() {
   
   const ctrlButtons = document.getElementById('ctrlButtons');
   if (!buttonsVisible) ctrlButtons.classList.add('hidden');
+  
+  // Preload all chart images
+  preloadChartImages();
   
   document.getElementById('ctrlToggle').addEventListener('click', () => {
     buttonsVisible = !buttonsVisible;
@@ -40,7 +44,10 @@ document.addEventListener('DOMContentLoaded', function() {
   
   document.getElementById('statsBtn').addEventListener('click', toggleModal);
   document.getElementById('closeBtn').addEventListener('click', closeModal);
-  document.getElementById('blurOverlay').addEventListener('click', closeModal);
+  document.getElementById('blurOverlay').addEventListener('click', closeAllModals);
+  
+  document.getElementById('infoBtn').addEventListener('click', toggleInfoModal);
+  document.getElementById('closeInfoBtn').addEventListener('click', closeInfoModal);
   
   document.querySelectorAll('.chart-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -51,7 +58,28 @@ document.addEventListener('DOMContentLoaded', function() {
   
   updateDateTime();
   setInterval(updateDateTime, 1000);
+  
+  // Auto refresh charts setiap 5 menit (bukan setiap kali modal dibuka)
+  setInterval(() => {
+    if (document.getElementById('statsModal').classList.contains('show')) {
+      refreshChart(activeChart, true);
+    }
+  }, 300000); // 5 menit
 });
+
+function preloadChartImages() {
+  const charts = ['summary', 'minutes', 'hourly', 'daily', 'monthly', 'yearly'];
+  charts.forEach(chart => {
+    const img = document.getElementById(chart);
+    if (img && !chartLoadedOnce[chart]) {
+      const tempImg = new Image();
+      tempImg.onload = () => {
+        chartLoadedOnce[chart] = true;
+      };
+      tempImg.src = img.src;
+    }
+  });
+}
 
 function toggleModal() {
   const modal = document.getElementById('statsModal');
@@ -59,13 +87,19 @@ function toggleModal() {
   const statsBtn = document.getElementById('statsBtn');
   const isVisible = modal.classList.contains('show');
   
+  // Close info modal if open
+  closeInfoModal();
+  
   if (isVisible) {
     closeModal();
   } else {
     modal.classList.add('show');
     overlay.classList.add('active');
     statsBtn.classList.add('active');
-    refreshChart(activeChart);
+    // Hanya refresh jika belum pernah di-load
+    if (!chartLoadedOnce[activeChart]) {
+      refreshChart(activeChart, false);
+    }
   }
 }
 
@@ -73,6 +107,35 @@ function closeModal() {
   document.getElementById('statsModal').classList.remove('show');
   document.getElementById('blurOverlay').classList.remove('active');
   document.getElementById('statsBtn').classList.remove('active');
+}
+
+function toggleInfoModal() {
+  const modal = document.getElementById('infoModal');
+  const overlay = document.getElementById('blurOverlay');
+  const infoBtn = document.getElementById('infoBtn');
+  const isVisible = modal.classList.contains('show');
+  
+  // Close stats modal if open
+  closeModal();
+  
+  if (isVisible) {
+    closeInfoModal();
+  } else {
+    modal.classList.add('show');
+    overlay.classList.add('active');
+    infoBtn.classList.add('active');
+  }
+}
+
+function closeInfoModal() {
+  document.getElementById('infoModal').classList.remove('show');
+  document.getElementById('blurOverlay').classList.remove('active');
+  document.getElementById('infoBtn').classList.remove('active');
+}
+
+function closeAllModals() {
+  closeModal();
+  closeInfoModal();
 }
 
 function toHijri(date) {
@@ -150,22 +213,40 @@ function switchChart(chartType) {
   if (targetImg) {
     activeChart = chartType;
     targetImg.style.display = 'block';
-    refreshChart(chartType);
+    // Hanya refresh jika belum pernah di-load
+    if (!chartLoadedOnce[chartType]) {
+      refreshChart(chartType, false);
+    }
   }
 }
 
-function refreshChart(chartType) {
+function refreshChart(chartType, forceRefresh = false) {
   const container = document.getElementById('imageContainer');
   const img = document.getElementById(chartType);
   if (!img) return;
   
+  // Jangan refresh jika sudah di-load kecuali dipaksa
+  if (chartLoadedOnce[chartType] && !forceRefresh) {
+    return;
+  }
+  
   container.classList.add('loading');
   const timestamp = Date.now();
   const baseSrc = img.src.split('?')[0];
-  img.src = `${baseSrc}?t=${timestamp}`;
+  
+  // Gunakan cache buster hanya saat force refresh
+  const newSrc = forceRefresh ? `${baseSrc}?t=${timestamp}` : baseSrc;
+  
+  // Cek apakah src berbeda sebelum update
+  if (img.src === newSrc) {
+    container.classList.remove('loading');
+    chartLoadedOnce[chartType] = true;
+    return;
+  }
   
   const handleLoad = () => {
     container.classList.remove('loading');
+    chartLoadedOnce[chartType] = true;
     img.removeEventListener('load', handleLoad);
     img.removeEventListener('error', handleError);
   };
@@ -179,6 +260,8 @@ function refreshChart(chartType) {
   
   img.addEventListener('load', handleLoad);
   img.addEventListener('error', handleError);
+  
+  img.src = newSrc;
 }
 
 function showToast(message, type, duration = 3000) {
@@ -196,11 +279,20 @@ function showToast(message, type, duration = 3000) {
 }
 
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Escape') closeAllModals();
   if ((e.key === 't' || e.key === 'T') && !e.ctrlKey && !e.altKey) {
     document.getElementById('themeBtn').click();
   }
   if ((e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.altKey) {
     toggleModal();
+  }
+  if ((e.key === 'i' || e.key === 'I') && !e.ctrlKey && !e.altKey) {
+    toggleInfoModal();
+  }
+  if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.altKey) {
+    if (document.getElementById('statsModal').classList.contains('show')) {
+      refreshChart(activeChart, true);
+      showToast('Chart refreshed', 'success');
+    }
   }
 });
