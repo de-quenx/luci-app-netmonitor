@@ -1,8 +1,9 @@
 #!/bin/sh
 
-# Setup vnstati permissions and reset-db
+# Setup permissions
 chmod 755 /www/netmonitor/vnstati/vnstati.sh
 chmod 755 /usr/bin/reset-db
+chmod 600 /etc/vnstat.conf
 
 # Fix jQuery version for netdata
 if [ -f /usr/share/netdata/web/lib/jquery-3.6.0.min.js ]; then
