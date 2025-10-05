@@ -13,7 +13,7 @@ on:
       - "v*"
 
 env:
-  PACKAGE_NAME: ${{ inputs.package_name || 'luci-theme-argon' }}
+  PACKAGE_NAME: ${{ inputs.package_name || 'luci-app-' }}
 
 jobs:
   get-version:
@@ -34,6 +34,7 @@ jobs:
         run: |
           VERSION=$(grep 'PKG_VERSION:=' ./Makefile | awk -F '=' '{print $2}' | tr -d ' ')
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Package: ${{ env.PACKAGE_NAME }}"
           echo "New Version: ${VERSION}"
 
       - name: Upload release artifacts
@@ -74,6 +75,9 @@ jobs:
     name: Release ${{ matrix.arch }}-${{ matrix.branch }}
     needs: get-version
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
     continue-on-error: false
     strategy:
       fail-fast: false
@@ -89,6 +93,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      - name: Show build info
+        run: |
+          echo "Package: ${{ env.PACKAGE_NAME }}"
+          echo "Architecture: ${{ matrix.arch }}"
+          echo "Branch: ${{ matrix.branch }}"
 
       - name: Set up build environment
         run: |
@@ -108,6 +118,7 @@ jobs:
 
       - name: List built packages
         run: |
+          echo "::group::Built packages"
           find ${{ github.workspace }}/artifacts -type f -name "${{ env.PACKAGE_NAME }}*.ipk" -o -name "${{ env.PACKAGE_NAME }}*.apk" | sort
           echo "::endgroup::"
 
@@ -116,15 +127,25 @@ jobs:
           mkdir -p ${{ github.workspace }}/release-artifacts
 
           if [[ "${{ matrix.branch }}" == "SNAPSHOT" ]]; then
+            echo "Collecting APK files for SNAPSHOT..."
             find ${{ github.workspace }}/artifacts/bin/packages -name "${{ env.PACKAGE_NAME }}*.apk" -exec cp {} ${{ github.workspace }}/release-artifacts/ \; || true
             find ${{ github.workspace }}/artifacts/bin/targets -name "${{ env.PACKAGE_NAME }}*.apk" -exec cp {} ${{ github.workspace }}/release-artifacts/ \; || true
           else
+            echo "Collecting IPK files for ${{ matrix.branch }}..."
             find ${{ github.workspace }}/artifacts/bin/packages -name "${{ env.PACKAGE_NAME }}*.ipk" -exec cp {} ${{ github.workspace }}/release-artifacts/ \; || true
             find ${{ github.workspace }}/artifacts/bin/targets -name "${{ env.PACKAGE_NAME }}*.ipk" -exec cp {} ${{ github.workspace }}/release-artifacts/ \; || true
           fi
 
-          echo "Contents of release-artifacts directory:"
-          ls -la ${{ github.workspace }}/release-artifacts/
+          echo "Contents of release-artifacts:"
+          ls -lh ${{ github.workspace }}/release-artifacts/
+
+      - name: Validate artifacts
+        run: |
+          if [ -z "$(ls -A ${{ github.workspace }}/release-artifacts/)" ]; then
+            echo "Error: No artifacts found!"
+            exit 1
+          fi
+          echo "Artifacts validated successfully"
 
       - name: Upload release artifacts
         uses: softprops/action-gh-release@v2
@@ -133,24 +154,38 @@ jobs:
           files: |
             ${{ github.workspace }}/release-artifacts/*
 
-      - name: Clean cache after successful build
+      - name: Clean all caches after successful build
         if: success()
-        run: |
-          echo "Clean cache after successful IPK/APK build..."
-          gh extension install actions/gh-actions-cache 2>/dev/null || true
-          
-          REPO=${{ github.repository }}
-          BRANCH="refs/heads/main"
-          
-          echo "Fetching cache list for $REPO on $BRANCH"
-          
-          gh cache list -R $REPO | while IFS=$'\t' read -r key size created; do
-            if [[ -n "$key" && "$key" != "cache key" ]]; then
-              echo "Deleting cache: $key"
-              gh cache delete "$key" -R $REPO --confirm 2>/dev/null || echo "Failed to delete $key or already deleted"
-            fi
-          done
-          
-          echo "Cache cleanup completed successfully!"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            console.log('Starting cache cleanup...');
+            
+            const caches = await github.rest.actions.getActionsCacheList({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            
+            if (caches.data.total_count === 0) {
+              console.log('No caches found');
+              return;
+            }
+            
+            console.log(`Found ${caches.data.total_count} cache(s) to delete`);
+            
+            for (const cache of caches.data.actions_caches) {
+              console.log(`Deleting: ${cache.key} (${(cache.size_in_bytes / 1024 / 1024).toFixed(2)} MB)`);
+              try {
+                await github.rest.actions.deleteActionsCacheById({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  cache_id: cache.id,
+                });
+                console.log(`Successfully deleted: ${cache.key}`);
+              } catch (error) {
+                console.log(`Failed to delete ${cache.key}: ${error.message}`);
+              }
+            }
+            
+            console.log('Cache cleanup completed!');
