@@ -12,6 +12,9 @@ fi
 # Create vnstat directory
 mkdir -p /etc/vnstat
 
+# change directory
+sed -i '11c\DatabaseDir "/etc/vnstat"' /etc/vnstat.conf
+
 # Restart services
 /etc/init.d/netdata restart >/dev/null 2>&1
 /etc/init.d/vnstat restart >/dev/null 2>&1
