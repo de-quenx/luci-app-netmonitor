@@ -15,7 +15,7 @@ PKG_LICENSE_FILES:=LICENSE
 
 LUCI_TITLE:=LuCI Network Monitor
 LUCI_DESCRIPTION:=Network monitoring application for LuCI
-LUCI_DEPENDS:=+libc +netdata
+LUCI_DEPENDS:=+libc +netdata +vnstat2 +vnstati2
 LUCI_PKGARCH:=all
 
 include $(TOPDIR)/feeds/luci/luci.mk
