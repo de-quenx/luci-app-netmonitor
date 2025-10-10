@@ -2,7 +2,6 @@ let buttonsVisible = localStorage.getItem('buttonsVisible') !== 'false';
 let currentTheme = localStorage.getItem('theme') || 'light';
 let activeChart = 'summary';
 let showHijri = false;
-let autoRefreshInterval = null;
 
 const themes = {
   light: 'Light',
@@ -71,8 +70,6 @@ function toggleModal() {
     modal.classList.add('show');
     overlay.classList.add('active');
     statsBtn.classList.add('active');
-    loadChart(activeChart);
-    startAutoRefresh();
   }
 }
 
@@ -80,7 +77,6 @@ function closeModal() {
   document.getElementById('statsModal').classList.remove('show');
   document.getElementById('blurOverlay').classList.remove('active');
   document.getElementById('statsBtn').classList.remove('active');
-  stopAutoRefresh();
 }
 
 function toggleInfoModal() {
@@ -109,23 +105,6 @@ function closeInfoModal() {
 function closeAllModals() {
   closeModal();
   closeInfoModal();
-}
-
-function startAutoRefresh() {
-  stopAutoRefresh();
-  
-  autoRefreshInterval = setInterval(() => {
-    if (document.getElementById('statsModal').classList.contains('show')) {
-      loadChart(activeChart);
-    }
-  }, 30000);
-}
-
-function stopAutoRefresh() {
-  if (autoRefreshInterval) {
-    clearInterval(autoRefreshInterval);
-    autoRefreshInterval = null;
-  }
 }
 
 function toHijri(date) {
@@ -203,38 +182,7 @@ function switchChart(chartType) {
   if (targetImg) {
     activeChart = chartType;
     targetImg.style.display = 'block';
-    loadChart(chartType);
   }
-}
-
-function loadChart(chartType) {
-  const container = document.getElementById('imageContainer');
-  const img = document.getElementById(chartType);
-  if (!img) return;
-  
-  container.classList.add('loading');
-  
-  const timestamp = Date.now();
-  const baseSrc = img.getAttribute('src').split('?')[0];
-  const newSrc = `${baseSrc}?t=${timestamp}`;
-  
-  const handleLoad = () => {
-    container.classList.remove('loading');
-    img.removeEventListener('load', handleLoad);
-    img.removeEventListener('error', handleError);
-  };
-  
-  const handleError = () => {
-    container.classList.remove('loading');
-    showToast('Failed to load chart', 'error');
-    img.removeEventListener('load', handleLoad);
-    img.removeEventListener('error', handleError);
-  };
-  
-  img.addEventListener('load', handleLoad);
-  img.addEventListener('error', handleError);
-  
-  img.src = newSrc;
 }
 
 function showToast(message, type, duration = 3000) {
@@ -261,11 +209,5 @@ document.addEventListener('keydown', function(e) {
   }
   if ((e.key === 'i' || e.key === 'I') && !e.ctrlKey && !e.altKey) {
     toggleInfoModal();
-  }
-  if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.altKey) {
-    if (document.getElementById('statsModal').classList.contains('show')) {
-      loadChart(activeChart);
-      showToast('Chart updated', 'success');
-    }
   }
 });
