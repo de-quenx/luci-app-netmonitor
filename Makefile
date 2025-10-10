@@ -6,7 +6,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-netmonitor
-PKG_VERSION:=1.1.9
+PKG_VERSION:=1.2.1
 PKG_RELEASE:=06102025
 
 PKG_MAINTAINER:=Fidz
