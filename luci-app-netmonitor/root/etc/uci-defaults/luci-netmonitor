@@ -2,8 +2,6 @@
 
 sed -i 's|^;DatabaseDir.*|DatabaseDir "/etc/vnstat"|' /etc/vnstat.conf
 
-mv /usr/share/netdata/web/lib/jquery-3.6.0.min.js /usr/share/netdata/web/lib/jquery-2.2.4.min.js 2>/dev/null
-
 /www/netmonitor/vnstati/vnstati.sh >/dev/null 2>&1
 
 rm -f /tmp/luci-indexcache /tmp/luci-modulecache
