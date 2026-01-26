@@ -7,7 +7,6 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     
     <script>
-        // Auto-detect IP/host
         var netdataUrl = window.location.protocol + '//' + window.location.hostname + ':19999/dashboard.js';
         document.write('<script src="' + netdataUrl + '"><\/script>');
     </script>
@@ -30,7 +29,8 @@
       <div class="top-ctrl">
         <div class="ctrl-buttons" id="ctrlButtons">
           <button class="btn" id="themeBtn"><span id="themeText">Light</span></button>
-          <button class="btn" id="infoBtn">Info</button>
+          <button class="btn reset-btn" id="resetBtn">Reset</button>
+          <button class="btn refresh-btn" id="refreshBtn">Refresh</button>
           <button class="btn stats" id="statsBtn">Statistics</button>
         </div>
         <button class="ctrl-toggle" id="ctrlToggle">⚙</button>
@@ -60,6 +60,18 @@
           <div class="info">
             <div class="info-title">Day</div>
             <div id="currentDay" class="info-value">Loading...</div>
+          </div>
+          <div class="info">
+            <div class="info-title">IP Info</div>
+            <div id="ipInfo" class="info-value">Loading...</div>
+          </div>
+          <div class="info">
+            <div class="info-title">Country</div>
+            <div id="countryInfo" class="info-value">Loading...</div>
+          </div>
+          <div class="info">
+            <div class="info-title">Provider</div>
+            <div id="providerInfo" class="info-value">Loading...</div>
           </div>
         </div>
         
@@ -126,22 +138,6 @@
       <img id="daily" class="chart-img" src="vnstati/br-lan_vnstat_d.png" alt="Daily Stats">
       <img id="monthly" class="chart-img" src="vnstati/br-lan_vnstat_m.png" alt="Monthly Stats">
       <img id="yearly" class="chart-img" src="vnstati/br-lan_vnstat_y.png" alt="Yearly Stats">
-    </div>
-  </div>
-
-  <div class="info-modal" id="infoModal">
-    <button class="close-btn" id="closeInfoBtn">×</button>
-    
-    <div class="info-content">
-      <ul>
-        <li>Buka Terminal Lalu Ketik<code>reset-db</code>Dan Enter ( Untuk Reset Database )</li>
-        <li>Lokasi Database<code>/etc/vnstat/vnstat.db</code></li>
-        <li>Jika Tabel Tidak Muncul Silahkan Reset Database</li>
-      </ul>
-    </div>
-    
-    <div class="info-footer">
-      <p>Tema By <span class="designer">Fidz</span></p>
     </div>
   </div>
 
