@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-netmonitor
-PKG_VERSION:=1.2.6
-PKG_RELEASE:=25012026
+PKG_VERSION:=1.3.0
+PKG_RELEASE:=30012026
 
 PKG_MAINTAINER:=Fidz
 PKG_LICENSE:=Unlicense
@@ -30,7 +30,6 @@ define Build/Prepare
 	$(CP) $(CURDIR)/luasrc $(PKG_BUILD_DIR)
 	$(CP) $(CURDIR)/htdocs $(PKG_BUILD_DIR)
 	mkdir -p $(PKG_BUILD_DIR)/root/etc/vnstat
-	chmod 0755 $(PKG_BUILD_DIR)/htdocs/cgi-bin/resetdb
 	chmod 0755 $(PKG_BUILD_DIR)/root/usr/bin/reset-db
 	chmod 0755 $(PKG_BUILD_DIR)/htdocs/netmonitor/vnstati/vnstati.sh
 endef
@@ -55,8 +54,6 @@ define Package/$(PKG_NAME)/install
 	$(CP) $(PKG_BUILD_DIR)/luasrc/* $(1)/usr/lib/lua/luci/
 	$(INSTALL_DIR) $(1)/www/netmonitor
 	$(CP) $(PKG_BUILD_DIR)/htdocs/netmonitor/* $(1)/www/netmonitor/
-	$(INSTALL_DIR) $(1)/www/cgi-bin
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/htdocs/cgi-bin/resetdb $(1)/www/cgi-bin/
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))
