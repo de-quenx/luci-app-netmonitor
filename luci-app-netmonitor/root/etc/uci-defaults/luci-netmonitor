@@ -2,7 +2,7 @@
 
 sed -i 's|^;DatabaseDir.*|DatabaseDir "/etc/vnstat"|' /etc/vnstat.conf
 
-/www/netmonitor/vnstati/vnstati.sh >/dev/null 2>&1
+bash /www/netmonitor/vnstati/vnstati.sh >/dev/null 2>&1
 
 rm -f /tmp/luci-indexcache /tmp/luci-modulecache
 
