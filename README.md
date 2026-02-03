@@ -12,7 +12,7 @@
 - **Auto Refresh** - Updates automatically
 - **Charts** - Visual data display
 - **Clean Interface** - Simple and intuitive
-- **Custom Tema** - 6 Custom Tema Modern
+- **Custom Tema** - 11 Custom Tema Modern
  
  ---
 
