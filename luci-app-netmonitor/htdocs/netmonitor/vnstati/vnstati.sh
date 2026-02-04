@@ -5,3 +5,4 @@ vnstati -h -i br-lan -o /www/netmonitor/vnstati/br-lan_vnstat_h.png
 vnstati -d -i br-lan -o /www/netmonitor/vnstati/br-lan_vnstat_d.png
 vnstati -m -i br-lan -o /www/netmonitor/vnstati/br-lan_vnstat_m.png
 vnstati -y -i br-lan -o /www/netmonitor/vnstati/br-lan_vnstat_y.png
+vnstati -t -i br-lan -o /www/netmonitor/vnstati/br-lan_vnstat_t.png
