@@ -30,6 +30,7 @@ define Build/Prepare
 	$(CP) $(CURDIR)/luasrc $(PKG_BUILD_DIR)
 	$(CP) $(CURDIR)/htdocs $(PKG_BUILD_DIR)
 	mkdir -p $(PKG_BUILD_DIR)/root/etc/vnstat
+	chmod 0755 $(PKG_BUILD_DIR)/htdocs/cgi-bin/netmonitor/stats
 	chmod 0755 $(PKG_BUILD_DIR)/htdocs/netmonitor/vnstati/vnstati.sh
 endef
 
@@ -50,6 +51,8 @@ endef
 define Package/$(PKG_NAME)/install
 	$(CP) $(PKG_BUILD_DIR)/root/* $(1)/
 	$(CP) $(PKG_BUILD_DIR)/luasrc/* $(1)/usr/lib/lua/luci/
+	$(INSTALL_DIR) $(1)/www/cgi-bin/netmonitor
+	$(CP) $(PKG_BUILD_DIR)/htdocs/cgi-bin/netmonitor/* $(1)/www/cgi-bin/netmonitor/
 	$(INSTALL_DIR) $(1)/www/netmonitor
 	$(CP) $(PKG_BUILD_DIR)/htdocs/netmonitor/* $(1)/www/netmonitor/
 endef
