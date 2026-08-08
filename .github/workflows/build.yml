@@ -2,78 +2,155 @@ name: Build Packages
 
 on:
   workflow_dispatch:
+    inputs:
+      package_dir:
+        description: 'Package directory (default: luci-app-netmonitor)'
+        required: false
+        default: ''
+        type: string
   push:
     tags:
       - "v*"
 
 env:
   PACKAGE_NAME: luci-app-netmonitor
+  PACKAGE_DIR: ${{ github.event.inputs.package_dir || 'luci-app-netmonitor' }}
 
 jobs:
-  build:
-    name: Build OpenWrt ${{ matrix.version }}
+  get-version:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          ref: ${{ github.ref_name }}
+
+      - name: Extract version
+        id: version
+        run: |
+          MAKEFILE="./${{ env.PACKAGE_DIR }}/Makefile"
+          [ ! -f "$MAKEFILE" ] && MAKEFILE="./Makefile"
+          [ ! -f "$MAKEFILE" ] && { echo "Error: Makefile not found!"; exit 1; }
+          VERSION=$(grep 'PKG_VERSION:=' "$MAKEFILE" | awk -F '=' '{print $2}' | tr -d ' ')
+          RELEASE=$(grep 'PKG_RELEASE:=' "$MAKEFILE" | awk -F '=' '{print $2}' | tr -d ' ')
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "release=${RELEASE}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ steps.version.outputs.version }}"
+          name: "v${{ steps.version.outputs.version }}-${{ steps.version.outputs.release }}"
+          generate_release_notes: true
+          draft: false
+          body: |
+            ### ${{ env.PACKAGE_NAME }} v${{ steps.version.outputs.version }}-${{ steps.version.outputs.release }}
+
+            Package `PKGARCH=all` — satu file berlaku untuk semua arsitektur.
+
+            | Branch         | File        | Keterangan        |
+            |----------------|-------------|-------------------|
+            | openwrt-24.10  | `_all.ipk`  | Versi stabil      |
+            | openwrt-25.12  | `_all.apk`  | Versi terbaru     |
+            | SNAPSHOT       | `_all.apk`  | Versi development |
+
+            ---
+
+            **IPK — OpenWrt 24.10**
+            ```bash
+            opkg install ${{ env.PACKAGE_NAME }}_${{ steps.version.outputs.version }}-${{ steps.version.outputs.release }}_all.ipk
+            ```
+
+            **APK — OpenWrt 25.12 / SNAPSHOT**
+            ```bash
+            apk add --allow-untrusted ${{ env.PACKAGE_NAME }}_${{ steps.version.outputs.version }}-${{ steps.version.outputs.release }}_all.apk
+            ```
+
+  release:
+    name: ${{ matrix.branch }}
+    needs: get-version
     runs-on: ubuntu-24.04
     permissions:
       contents: write
       actions: write
+    continue-on-error: false
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - version: '24.10.8'
-            branch: openwrt-24.10
-            ext: ipk
-            arch: x86_64
-          - version: '25.12.5'
-            branch: openwrt-25.12
-            ext: apk
-            arch: x86_64
+        branch:
+          - openwrt-24.10
+          - openwrt-25.12
+          - SNAPSHOT
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Prepare Feed Directory
+      - name: Determine package format
+        id: format
         run: |
-          mkdir -p feeds/${{ env.PACKAGE_NAME }} artifacts
-          rsync -av \
-            --exclude='.git/' \
-            --exclude='feeds/' \
-            --exclude='artifacts/' \
-            ./ feeds/${{ env.PACKAGE_NAME }}/
-
-      - name: Build Package
-        uses: openwrt/gh-action-sdk@main
-        env:
-          ARCH: ${{ matrix.arch }}-${{ matrix.branch }}
-          ARTIFACTS_DIR: ${{ github.workspace }}/artifacts
-          FEED_DIR: ${{ github.workspace }}/feeds
-          PACKAGES: ${{ env.PACKAGE_NAME }} vnstat2 vnstati2
-          NO_REFRESH_CHECK: true
-
-      - name: Collect Artifacts
-        run: |
-          mkdir -p release-artifacts
-          
-          find ${{ github.workspace }}/artifacts -type f \( -name "${{ env.PACKAGE_NAME }}*.ipk" -o -name "${{ env.PACKAGE_NAME }}*.apk" \) -exec cp {} release-artifacts/ \;
-
-          if [ -z "$(ls -A release-artifacts/)" ]; then
-            echo "Build gagal: Tidak ada file paket ditemukan."
-            exit 1
+          if [[ "${{ matrix.branch }}" == "openwrt-24.10" ]]; then
+            echo "ext=ipk" >> $GITHUB_OUTPUT
+          else
+            echo "ext=apk" >> $GITHUB_OUTPUT
           fi
 
-          ls -la release-artifacts/
+      - name: Prepare feed directory
+        run: |
+          mkdir -p feeds/${{ env.PACKAGE_NAME }} artifacts
+          SRC="./${{ env.PACKAGE_DIR }}"
+          [ ! -d "$SRC" ] && SRC="."
+          rsync -a --exclude='.git/' --exclude='feeds/' --exclude='artifacts/' "$SRC/" ./feeds/${{ env.PACKAGE_NAME }}/
 
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+      - name: Build package
+        uses: openwrt/gh-action-sdk@main
+        env:
+          ARCH: x86_64-${{ matrix.branch }}
+          ARTIFACTS_DIR: ${{ github.workspace }}/artifacts
+          FEED_DIR: ${{ github.workspace }}/feeds
+          PACKAGES: ${{ env.PACKAGE_NAME }}
+          NO_REFRESH_CHECK: true
+
+      - name: Collect built packages
+        id: collect
+        run: |
+          EXT="${{ steps.format.outputs.ext }}"
+          VER="${{ needs.get-version.outputs.version }}"
+          REL="${{ needs.get-version.outputs.release }}"
+          DEST="${{ github.workspace }}/release-artifacts"
+          mkdir -p "$DEST"
+
+          find "${{ github.workspace }}/artifacts" \
+            -type f -name "${PACKAGE_NAME}_${VER}-${REL}_all.${EXT}" \
+            -exec cp -v {} "$DEST/" \;
+
+          COUNT=$(find "$DEST" -maxdepth 1 -type f | wc -l)
+          echo "count=${COUNT}" >> $GITHUB_OUTPUT
+          ls -lh "$DEST/"
+        env:
+          PACKAGE_NAME: ${{ env.PACKAGE_NAME }}
+
+      - name: Fail if no packages found
+        if: steps.collect.outputs.count == '0'
+        run: |
+          echo "Error: file ${{ env.PACKAGE_NAME }}_${{ needs.get-version.outputs.version }}-${{ needs.get-version.outputs.release }}_all.${{ steps.format.outputs.ext }} tidak ditemukan"
+          exit 1
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: package-openwrt-${{ matrix.version }}
-          path: release-artifacts/*
-          retention-days: 1
+          tag_name: "v${{ needs.get-version.outputs.version }}"
+          files: ${{ github.workspace }}/release-artifacts/*
 
-      - name: Clean Cache
+      - name: Clean build cache
         if: success()
         continue-on-error: true
         uses: actions/github-script@v7
@@ -93,42 +170,5 @@ jobs:
                   repo: context.repo.repo,
                   cache_id: cache.id,
                 });
-              } catch (error) {
-                console.log('Failed to delete ' + cache.key + ': ' + error.message);
-              }
+              } catch (_) {}
             }
-
-  release:
-    name: Create Release
-    needs: build
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Get Package Info
-        id: pkg_info
-        run: |
-          VERSION=$(grep -m 1 'PKG_VERSION:=' ./Makefile | awk -F '=' '{print $2}' | tr -d ' \r')
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-
-      - name: Download All Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release-artifacts
-          merge-multiple: true
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: "v${{ steps.pkg_info.outputs.version }}"
-          name: "v${{ steps.pkg_info.outputs.version }}"
-          generate_release_notes: false
-          draft: false
-          body: ""
-          files: release-artifacts/*
