@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       package_dir:
-        description: 'Package directory (default: luci-app-netmonitor)'
+        description: 'Package directory (leave empty for default: luci-app-netmonitor)'
         required: false
         default: ''
         type: string
@@ -23,7 +23,6 @@ jobs:
       contents: write
     outputs:
       version: ${{ steps.version.outputs.version }}
-      release: ${{ steps.version.outputs.release }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -34,46 +33,54 @@ jobs:
       - name: Extract version
         id: version
         run: |
-          MAKEFILE="./${{ env.PACKAGE_DIR }}/Makefile"
-          [ ! -f "$MAKEFILE" ] && MAKEFILE="./Makefile"
-          [ ! -f "$MAKEFILE" ] && { echo "Error: Makefile not found!"; exit 1; }
-          VERSION=$(grep 'PKG_VERSION:=' "$MAKEFILE" | awk -F '=' '{print $2}' | tr -d ' ')
-          RELEASE=$(grep 'PKG_RELEASE:=' "$MAKEFILE" | awk -F '=' '{print $2}' | tr -d ' ')
+          if [ -f "./${{ env.PACKAGE_DIR }}/Makefile" ]; then
+            VERSION=$(grep 'PKG_VERSION:=' ./${{ env.PACKAGE_DIR }}/Makefile | awk -F '=' '{print $2}' | tr -d ' ')
+          elif [ -f "./Makefile" ]; then
+            VERSION=$(grep 'PKG_VERSION:=' ./Makefile | awk -F '=' '{print $2}' | tr -d ' ')
+          else
+            echo "Error: Makefile not found!"
+            exit 1
+          fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "release=${RELEASE}" >> $GITHUB_OUTPUT
+          echo "New Version: ${VERSION}"
+          echo "Package Directory: ${{ env.PACKAGE_DIR }}"
 
-      - name: Create GitHub Release
+      - name: Upload release artifacts
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "v${{ steps.version.outputs.version }}"
-          name: "v${{ steps.version.outputs.version }}-${{ steps.version.outputs.release }}"
           generate_release_notes: true
           draft: false
+          name: "v${{ steps.version.outputs.version }} Release"
           body: |
-            ### ${{ env.PACKAGE_NAME }} v${{ steps.version.outputs.version }}-${{ steps.version.outputs.release }}
-
-            Package `PKGARCH=all` — satu file berlaku untuk semua arsitektur.
-
-            | Branch         | File        | Keterangan        |
-            |----------------|-------------|-------------------|
-            | openwrt-24.10  | `_all.ipk`  | Versi stabil      |
-            | openwrt-25.12  | `_all.apk`  | Versi terbaru     |
-            | SNAPSHOT       | `_all.apk`  | Versi development |
+            ---
+            
+            ### Packages Tersedia
+            - **ALL**: Semua arsitektur
+            - **24.10**: Versi stabil  
+            - **25.12**: Versi terbaru
 
             ---
-
-            **IPK — OpenWrt 24.10**
+            
+            ### Instalasi For Openwrt | ImmortalWrt
+            
+            **IPK**
             ```bash
-            opkg install ${{ env.PACKAGE_NAME }}_${{ steps.version.outputs.version }}-${{ steps.version.outputs.release }}_all.ipk
+            opkg install ${{ env.PACKAGE_NAME }}*.ipk
             ```
-
-            **APK — OpenWrt 25.12 / SNAPSHOT**
+            
+            **APK**
             ```bash
-            apk add --allow-untrusted ${{ env.PACKAGE_NAME }}_${{ steps.version.outputs.version }}-${{ steps.version.outputs.release }}_all.apk
+            apk add ${{ env.PACKAGE_NAME }}*.apk
             ```
+            
+            ### Terima Kasih All
+            Terima kasih untuk semua pengguna yang telah coba ini!
 
+            ----
+            
   release:
-    name: ${{ matrix.branch }}
+    name: Release ${{ matrix.arch }}-${{ matrix.branch }}
     needs: get-version
     runs-on: ubuntu-24.04
     permissions:
@@ -83,10 +90,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        arch:
+          - x86_64
         branch:
           - openwrt-24.10
           - openwrt-25.12
-          - SNAPSHOT
 
     steps:
       - name: Checkout repository
@@ -94,81 +102,90 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Determine package format
-        id: format
+      - name: Set up build environment
         run: |
-          if [[ "${{ matrix.branch }}" == "openwrt-24.10" ]]; then
-            echo "ext=ipk" >> $GITHUB_OUTPUT
-          else
-            echo "ext=apk" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Prepare feed directory
-        run: |
+          echo "::group::Setting up build environment for ${{ matrix.arch }}-${{ matrix.branch }}"
+          echo "Package Directory: ${{ env.PACKAGE_DIR }}"
           mkdir -p feeds/${{ env.PACKAGE_NAME }} artifacts
-          SRC="./${{ env.PACKAGE_DIR }}"
-          [ ! -d "$SRC" ] && SRC="."
-          rsync -a --exclude='.git/' --exclude='feeds/' --exclude='artifacts/' "$SRC/" ./feeds/${{ env.PACKAGE_NAME }}/
+          
+          if [ -d "./${{ env.PACKAGE_DIR }}" ]; then
+            rsync -av --exclude='.git/' --exclude='feeds/' --exclude='artifacts/' ./${{ env.PACKAGE_DIR }}/ ./feeds/${{ env.PACKAGE_NAME }}/
+          else
+            rsync -av --exclude='.git/' --exclude='feeds/' --exclude='artifacts/' ./ ./feeds/${{ env.PACKAGE_NAME }}/
+          fi
+          
+          echo "::endgroup::"
 
       - name: Build package
         uses: openwrt/gh-action-sdk@main
         env:
-          ARCH: x86_64-${{ matrix.branch }}
+          ARCH: ${{ matrix.arch }}-${{ matrix.branch }}
           ARTIFACTS_DIR: ${{ github.workspace }}/artifacts
           FEED_DIR: ${{ github.workspace }}/feeds
           PACKAGES: ${{ env.PACKAGE_NAME }}
           NO_REFRESH_CHECK: true
 
-      - name: Collect built packages
-        id: collect
+      - name: List built packages
         run: |
-          EXT="${{ steps.format.outputs.ext }}"
-          VER="${{ needs.get-version.outputs.version }}"
-          REL="${{ needs.get-version.outputs.release }}"
-          DEST="${{ github.workspace }}/release-artifacts"
-          mkdir -p "$DEST"
+          find ${{ github.workspace }}/artifacts -type f -name "${{ env.PACKAGE_NAME }}*.ipk" -o -name "${{ env.PACKAGE_NAME }}*.apk" | sort
+          echo "::endgroup::"
 
-          find "${{ github.workspace }}/artifacts" \
-            -type f -name "${PACKAGE_NAME}_${VER}-${REL}_all.${EXT}" \
-            -exec cp -v {} "$DEST/" \;
-
-          COUNT=$(find "$DEST" -maxdepth 1 -type f | wc -l)
-          echo "count=${COUNT}" >> $GITHUB_OUTPUT
-          ls -lh "$DEST/"
-        env:
-          PACKAGE_NAME: ${{ env.PACKAGE_NAME }}
-
-      - name: Fail if no packages found
-        if: steps.collect.outputs.count == '0'
+      - name: Prepare release artifacts
         run: |
-          echo "Error: file ${{ env.PACKAGE_NAME }}_${{ needs.get-version.outputs.version }}-${{ needs.get-version.outputs.release }}_all.${{ steps.format.outputs.ext }} tidak ditemukan"
-          exit 1
+          mkdir -p ${{ github.workspace }}/release-artifacts
+          
+          echo "::group::Copying .ipk and .apk files"
+          # Cari dan copy semua file .ipk
+          find ${{ github.workspace }}/artifacts/bin/packages -type f -name "${{ env.PACKAGE_NAME }}*.ipk" -exec cp {} ${{ github.workspace }}/release-artifacts/ \; || true
+          find ${{ github.workspace }}/artifacts/bin/targets -type f -name "${{ env.PACKAGE_NAME }}*.ipk" -exec cp {} ${{ github.workspace }}/release-artifacts/ \; || true
+          
+          # Cari dan copy semua file .apk (tanpa mempedulikan nama branch)
+          find ${{ github.workspace }}/artifacts/bin/packages -type f -name "${{ env.PACKAGE_NAME }}*.apk" -exec cp {} ${{ github.workspace }}/release-artifacts/ \; || true
+          find ${{ github.workspace }}/artifacts/bin/targets -type f -name "${{ env.PACKAGE_NAME }}*.apk" -exec cp {} ${{ github.workspace }}/release-artifacts/ \; || true
+          echo "::endgroup::"
 
-      - name: Upload to GitHub Release
+          echo "Contents of release-artifacts directory:"
+          ls -la ${{ github.workspace }}/release-artifacts/
+
+      - name: Upload release artifacts
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "v${{ needs.get-version.outputs.version }}"
-          files: ${{ github.workspace }}/release-artifacts/*
+          files: |
+            ${{ github.workspace }}/release-artifacts/*
 
-      - name: Clean build cache
+      - name: Clean cache after successful build
         if: success()
         continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
+            console.log('Starting cache cleanup...');
+            
             const caches = await github.rest.actions.getActionsCacheList({
               owner: context.repo.owner,
               repo: context.repo.repo,
             });
-
-            if (caches.data.total_count === 0) return;
-
+            
+            if (caches.data.total_count === 0) {
+              console.log('No caches found');
+              return;
+            }
+            
+            console.log('Found ' + caches.data.total_count + ' cache(s) to delete');
+            
             for (const cache of caches.data.actions_caches) {
+              console.log('Deleting: ' + cache.key + ' (' + (cache.size_in_bytes / 1024 / 1024).toFixed(2) + ' MB)');
               try {
                 await github.rest.actions.deleteActionsCacheById({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   cache_id: cache.id,
                 });
-              } catch (_) {}
+                console.log('Successfully deleted: ' + cache.key);
+              } catch (error) {
+                console.log('Failed to delete ' + cache.key + ': ' + error.message);
+              }
             }
+            
+            console.log('Cache cleanup completed!');
